@@ -49,16 +49,15 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
         console.log('Started refreshing application (/) commands.');
 
-        // Get Client ID from token (rough way) or use an env var
-        // For simplicity, we'll ask the user to provide CLIENT_ID in .env
         const clientId = Buffer.from(process.env.DISCORD_TOKEN.split('.')[0], 'base64').toString();
+        const guildId = '1479858610472222730'; // Your server ID
 
         await rest.put(
-            Routes.applicationCommands(clientId),
+            Routes.applicationGuildCommands(clientId, guildId),
             { body: commands },
         );
 
-        console.log('Successfully reloaded application (/) commands.');
+        console.log('Successfully reloaded application (/) commands for the guild.');
     } catch (error) {
         console.error(error);
     }
