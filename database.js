@@ -3,11 +3,19 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 // Initialize Firebase
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+try {
+    const rawServiceAccount = process.env.FIREBASE_SERVICE_ACCOUNT;
+    // Clean up the string if it was pasted with extra quotes or newlines
+    const cleanedServiceAccount = rawServiceAccount.trim().replace(/^['"]|['"]$/g, '');
+    const serviceAccount = JSON.parse(cleanedServiceAccount);
 
-admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
-});
+    admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+    });
+    console.log('Firebase initialized successfully.');
+} catch (error) {
+    console.error('Firebase initialization failed:', error.message);
+}
 
 const db = admin.firestore();
 
@@ -16,15 +24,21 @@ const db = admin.firestore();
  * @param {string} userId 
  */
 async function getUser(userId) {
-    const doc = await db.collection('users').doc(userId).get();
-    if (!doc.exists) {
-        return {
-            messages: 0,
-            voiceMinutes: 0,
-            lastVoiceJoin: null
-        };
+    try {
+        const doc = await db.collection('users').doc(userId).get();
+        if (!doc.exists) {
+            return {
+                messages: 0,
+                voiceMinutes: 0,
+                lastVoiceJoin: null
+            };
+        }
+        return doc.data();
+    } catch (error) {
+        console.error(`Error getting user ${userId}:`, error.message);
+        // Return default stats if DB fails so the bot doesn't crash
+        return { messages: 0, voiceMinutes: 0, lastVoiceJoin: null };
     }
-    return doc.data();
 }
 
 /**
