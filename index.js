@@ -37,6 +37,8 @@ client.once('ready', () => {
 async function checkRoles(member, messages, voiceMinutes) {
     const voiceHours = voiceMinutes / 60;
     let rolesAdded = [];
+    const milestoneChannelId = process.env.MILESTONE_CHANNEL_ID;
+    const channel = milestoneChannelId ? member.guild.channels.cache.get(milestoneChannelId) : null;
 
     // Message Roles
     for (const roleData of messageRoles) {
@@ -45,6 +47,11 @@ async function checkRoles(member, messages, voiceMinutes) {
             if (role && !member.roles.cache.has(role.id)) {
                 await member.roles.add(role).catch(console.error);
                 rolesAdded.push(roleData.name);
+
+                // Send milestone message
+                if (channel) {
+                    await channel.send(`<@${member.id}> has received the **${roleData.name}** role for reaching **${roleData.threshold}** messages! 🥳`).catch(console.error);
+                }
             }
         }
     }
@@ -56,6 +63,11 @@ async function checkRoles(member, messages, voiceMinutes) {
             if (role && !member.roles.cache.has(role.id)) {
                 await member.roles.add(role).catch(console.error);
                 rolesAdded.push(roleData.name);
+
+                // Send milestone message
+                if (channel) {
+                    await channel.send(`<@${member.id}> has received the **${roleData.name}** role for spending **${roleData.threshold}** hours in voice! 🎙️`).catch(console.error);
+                }
             }
         }
     }
