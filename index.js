@@ -33,6 +33,35 @@ client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}`);
 });
 
+// Helper function to check and assign roles
+async function checkRoles(member, messages, voiceMinutes) {
+    const voiceHours = voiceMinutes / 60;
+    let rolesAdded = [];
+
+    // Message Roles
+    for (const roleData of messageRoles) {
+        if (messages >= roleData.threshold && roleData.id) {
+            const role = member.guild.roles.cache.get(roleData.id);
+            if (role && !member.roles.cache.has(role.id)) {
+                await member.roles.add(role).catch(console.error);
+                rolesAdded.push(roleData.name);
+            }
+        }
+    }
+
+    // Voice Roles
+    for (const roleData of voiceRoles) {
+        if (voiceHours >= roleData.threshold && roleData.id) {
+            const role = member.guild.roles.cache.get(roleData.id);
+            if (role && !member.roles.cache.has(role.id)) {
+                await member.roles.add(role).catch(console.error);
+                rolesAdded.push(roleData.name);
+            }
+        }
+    }
+    return rolesAdded;
+}
+
 // --- Message Tracking ---
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
@@ -44,17 +73,8 @@ client.on('messageCreate', async (message) => {
         user.messages = (user.messages || 0) + 1;
         await updateUser(userId, user);
 
-        // Role Assignment
-        const member = message.member;
-        for (const roleData of messageRoles) {
-            if (user.messages >= roleData.threshold && roleData.id) {
-                const role = message.guild.roles.cache.get(roleData.id);
-                if (role && !member.roles.cache.has(role.id)) {
-                    await member.roles.add(role).catch(console.error);
-                    console.log(`Assigned role ${roleData.name} to ${message.author.tag}`);
-                }
-            }
-        }
+        // Check Roles
+        await checkRoles(message.member, user.messages, user.voiceMinutes || 0);
     } catch (error) {
         console.error('Error tracking message:', error);
     }
@@ -98,6 +118,80 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         }
     } catch (error) {
         console.error('Error tracking voice:', error);
+    }
+});
+
+// --- Slash Commands ---
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isChatInputCommand()) return;
+
+    const { commandName, options } = interaction;
+
+    if (commandName === 'stats') {
+        const targetUser = options.getUser('user') || interaction.user;
+        const userStats = await getUser(targetUser.id);
+        const voiceHours = (userStats.voiceMinutes / 60 || 0).toFixed(1);
+
+        await interaction.reply({
+            content: `📊 **Stats for ${targetUser.tag}**\n- Messages: \`${userStats.messages || 0}\`\n- Voice Time: \`${voiceHours} hours\``,
+            ephemeral: false
+        });
+    }
+
+    if (commandName === 'leaderboard') {
+        const { getTopUsers } = require('./database');
+        const topUsers = await getTopUsers(10);
+        
+        if (topUsers.length === 0) {
+            return interaction.reply('No users found in the database yet!');
+        }
+
+        let lbMessage = '🏆 **Top 10 Active Users**\n\n';
+        for (let i = 0; i < topUsers.length; i++) {
+            const user = topUsers[i];
+            lbMessage += `${i + 1}. <@${user.id}> - \`${user.messages}\` messages\n`;
+        }
+
+        await interaction.reply(lbMessage);
+    }
+
+    // Admin Commands
+    if (commandName === 'add-messages') {
+        const targetUser = options.getUser('user');
+        const amount = options.getInteger('amount');
+        const userStats = await getUser(targetUser.id);
+
+        userStats.messages = (userStats.messages || 0) + amount;
+        await updateUser(targetUser.id, userStats);
+
+        // Check if they deserve new roles now
+        const member = await interaction.guild.members.fetch(targetUser.id);
+        await checkRoles(member, userStats.messages, userStats.voiceMinutes || 0);
+
+        await interaction.reply(`✅ Added \`${amount}\` messages to ${targetUser.tag}. New total: \`${userStats.messages}\``);
+    }
+
+    if (commandName === 'remove-messages') {
+        const targetUser = options.getUser('user');
+        const amount = options.getInteger('amount');
+        const userStats = await getUser(targetUser.id);
+
+        userStats.messages = Math.max(0, (userStats.messages || 0) - amount);
+        await updateUser(targetUser.id, userStats);
+
+        await interaction.reply(`✅ Removed \`${amount}\` messages from ${targetUser.tag}. New total: \`${userStats.messages}\``);
+    }
+
+    if (commandName === 'reset-user') {
+        const targetUser = options.getUser('user');
+        await updateUser(targetUser.id, { messages: 0, voiceMinutes: 0 });
+        await interaction.reply(`✅ Reset stats for ${targetUser.tag}.`);
+    }
+
+    if (commandName === 'reset-all') {
+        const { resetAllUsers } = require('./database');
+        await resetAllUsers();
+        await interaction.reply('🚨 **ALL** user message and voice stats have been reset!');
     }
 });
 
