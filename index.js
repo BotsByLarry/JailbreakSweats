@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client, GatewayIntentBits, PermissionFlagsBits } = require('discord.js');
 const express = require('express');
 const dotenv = require('dotenv');
 const { getUser, updateUser } = require('./database');
@@ -38,12 +38,15 @@ async function checkRoles(member, messages, voiceMinutes) {
     const voiceHours = voiceMinutes / 60;
     let rolesAdded = [];
     const milestoneChannelId = process.env.MILESTONE_CHANNEL_ID;
-    const channel = milestoneChannelId ? member.guild.channels.cache.get(milestoneChannelId) : null;
+    let channel = null;
+    if (milestoneChannelId) {
+        channel = member.guild.channels.cache.get(milestoneChannelId) || await member.guild.channels.fetch(milestoneChannelId).catch(() => null);
+    }
 
     // Message Roles
     for (const roleData of messageRoles) {
         if (messages >= roleData.threshold && roleData.id) {
-            const role = member.guild.roles.cache.get(roleData.id);
+            const role = member.guild.roles.cache.get(roleData.id) || await member.guild.roles.fetch(roleData.id).catch(() => null);
             if (role && !member.roles.cache.has(role.id)) {
                 await member.roles.add(role).catch(console.error);
                 rolesAdded.push(roleData.name);
@@ -59,7 +62,7 @@ async function checkRoles(member, messages, voiceMinutes) {
     // Voice Roles
     for (const roleData of voiceRoles) {
         if (voiceHours >= roleData.threshold && roleData.id) {
-            const role = member.guild.roles.cache.get(roleData.id);
+            const role = member.guild.roles.cache.get(roleData.id) || await member.guild.roles.fetch(roleData.id).catch(() => null);
             if (role && !member.roles.cache.has(role.id)) {
                 await member.roles.add(role).catch(console.error);
                 rolesAdded.push(roleData.name);
@@ -77,6 +80,34 @@ async function checkRoles(member, messages, voiceMinutes) {
 // --- Message Tracking ---
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
+
+    // DEBUG: Log message info
+    console.log(`Message from ${message.author.tag} in ${message.channel.id}: "${message.content}"`);
+
+    // --- WFL Feature ---
+    const wflChannelId = process.env.WFL_CHANNEL_ID;
+    const allowedChannelId = process.env.ALLOWED_CHANNEL_ID;
+    
+    if (wflChannelId && message.channel.id === wflChannelId) {
+        console.log(`Checking WFL in correct channel. Content: "${message.content}"`);
+        if (message.content.toLowerCase().includes('wfl')) {
+            console.log('WFL detected! Reacting...');
+            try {
+                await message.react('1496687020356014180'); // Win
+                await message.react('1496686972130037780'); // Fair
+                await message.react('1496686848146276392'); // Lose
+                console.log('Reactions added successfully.');
+            } catch (error) {
+                console.error('Error adding reactions:', error);
+            }
+        }
+    }
+
+    // --- Message Tracking ---
+    if (allowedChannelId && message.channel.id !== allowedChannelId) {
+        // console.log(`Skipping tracking: channel ${message.channel.id} is not ${allowedChannelId}`);
+        return;
+    }
 
     try {
         const userId = message.author.id;
@@ -119,7 +150,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                 const hours = user.voiceMinutes / 60;
                 for (const roleData of voiceRoles) {
                     if (hours >= roleData.threshold && roleData.id) {
-                        const role = newState.guild.roles.cache.get(roleData.id);
+                        const role = newState.guild.roles.cache.get(roleData.id) || await newState.guild.roles.fetch(roleData.id).catch(() => null);
                         if (role && !member.roles.cache.has(role.id)) {
                             await member.roles.add(role).catch(console.error);
                             console.log(`Assigned voice role ${roleData.name} to ${member.user.tag}`);
@@ -137,7 +168,18 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
-    const { commandName, options } = interaction;
+    const { commandName, options, channelId, member } = interaction;
+
+    // Channel restriction for commands (Admins bypass)
+    const allowedChannelId = process.env.ALLOWED_CHANNEL_ID;
+    const isAdmin = member.permissions.has(PermissionFlagsBits.Administrator);
+
+    if (allowedChannelId && channelId !== allowedChannelId && !isAdmin) {
+        return interaction.reply({
+            content: `❌ This bot can only be used in <#${allowedChannelId}>!`,
+            ephemeral: true
+        });
+    }
 
     if (commandName === 'grind-status') {
         const targetUser = options.getUser('user') || interaction.user;
