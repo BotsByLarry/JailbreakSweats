@@ -6,39 +6,39 @@ dotenv.config();
 const commands = [
     // Public Commands
     new SlashCommandBuilder()
-        .setName('stats')
-        .setDescription('Check your or another user\'s message and voice stats')
+        .setName('grind-status')
+        .setDescription('Check your or another user\'s sweat stats')
         .addUserOption(option => 
             option.setName('user')
                 .setDescription('The user to check stats for')),
     
     new SlashCommandBuilder()
-        .setName('leaderboard')
-        .setDescription('View the top active users in the server'),
+        .setName('top-grinders')
+        .setDescription('View the Hall of Fame for the most active users'),
 
     // Admin Commands
     new SlashCommandBuilder()
-        .setName('add-messages')
+        .setName('boost-count')
         .setDescription('Add messages to a user\'s count (Admin only)')
         .addUserOption(option => option.setName('user').setDescription('The user').setRequired(true))
         .addIntegerOption(option => option.setName('amount').setDescription('Amount to add').setRequired(true))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
     new SlashCommandBuilder()
-        .setName('remove-messages')
+        .setName('slash-count')
         .setDescription('Remove messages from a user\'s count (Admin only)')
         .addUserOption(option => option.setName('user').setDescription('The user').setRequired(true))
         .addIntegerOption(option => option.setName('amount').setDescription('Amount to remove').setRequired(true))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
     new SlashCommandBuilder()
-        .setName('reset-user')
+        .setName('clear-history')
         .setDescription('Reset a specific user\'s stats (Admin only)')
         .addUserOption(option => option.setName('user').setDescription('The user').setRequired(true))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
     new SlashCommandBuilder()
-        .setName('reset-all')
+        .setName('season-reset')
         .setDescription('Reset EVERYONE\'S message and voice stats (Admin only)')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 ];

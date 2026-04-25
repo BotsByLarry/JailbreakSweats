@@ -127,26 +127,26 @@ client.on('interactionCreate', async (interaction) => {
 
     const { commandName, options } = interaction;
 
-    if (commandName === 'stats') {
+    if (commandName === 'grind-status') {
         const targetUser = options.getUser('user') || interaction.user;
         const userStats = await getUser(targetUser.id);
         const voiceHours = (userStats.voiceMinutes / 60 || 0).toFixed(1);
 
         await interaction.reply({
-            content: `📊 **Stats for ${targetUser.tag}**\n- Messages: \`${userStats.messages || 0}\`\n- Voice Time: \`${voiceHours} hours\``,
+            content: `📊 **Sweat Stats for ${targetUser.tag}**\n- Messages: \`${userStats.messages || 0}\`\n- Voice Time: \`${voiceHours} hours\``,
             ephemeral: false
         });
     }
 
-    if (commandName === 'leaderboard') {
+    if (commandName === 'top-grinders') {
         const { getTopUsers } = require('./database');
         const topUsers = await getTopUsers(10);
         
         if (topUsers.length === 0) {
-            return interaction.reply('No users found in the database yet!');
+            return interaction.reply('No grinders found in the database yet!');
         }
 
-        let lbMessage = '🏆 **Top 10 Active Users**\n\n';
+        let lbMessage = '🏆 **Hall of Fame (Top 10)**\n\n';
         for (let i = 0; i < topUsers.length; i++) {
             const user = topUsers[i];
             lbMessage += `${i + 1}. <@${user.id}> - \`${user.messages}\` messages\n`;
@@ -156,7 +156,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     // Admin Commands
-    if (commandName === 'add-messages') {
+    if (commandName === 'boost-count') {
         const targetUser = options.getUser('user');
         const amount = options.getInteger('amount');
         const userStats = await getUser(targetUser.id);
@@ -164,14 +164,13 @@ client.on('interactionCreate', async (interaction) => {
         userStats.messages = (userStats.messages || 0) + amount;
         await updateUser(targetUser.id, userStats);
 
-        // Check if they deserve new roles now
         const member = await interaction.guild.members.fetch(targetUser.id);
         await checkRoles(member, userStats.messages, userStats.voiceMinutes || 0);
 
-        await interaction.reply(`✅ Added \`${amount}\` messages to ${targetUser.tag}. New total: \`${userStats.messages}\``);
+        await interaction.reply(`🚀 Boosted ${targetUser.tag} by \`${amount}\` messages! New total: \`${userStats.messages}\``);
     }
 
-    if (commandName === 'remove-messages') {
+    if (commandName === 'slash-count') {
         const targetUser = options.getUser('user');
         const amount = options.getInteger('amount');
         const userStats = await getUser(targetUser.id);
@@ -179,19 +178,19 @@ client.on('interactionCreate', async (interaction) => {
         userStats.messages = Math.max(0, (userStats.messages || 0) - amount);
         await updateUser(targetUser.id, userStats);
 
-        await interaction.reply(`✅ Removed \`${amount}\` messages from ${targetUser.tag}. New total: \`${userStats.messages}\``);
+        await interaction.reply(`🔪 Slashed \`${amount}\` messages from ${targetUser.tag}. New total: \`${userStats.messages}\``);
     }
 
-    if (commandName === 'reset-user') {
+    if (commandName === 'clear-history') {
         const targetUser = options.getUser('user');
         await updateUser(targetUser.id, { messages: 0, voiceMinutes: 0 });
-        await interaction.reply(`✅ Reset stats for ${targetUser.tag}.`);
+        await interaction.reply(`🧹 History cleared for ${targetUser.tag}.`);
     }
 
-    if (commandName === 'reset-all') {
+    if (commandName === 'season-reset') {
         const { resetAllUsers } = require('./database');
         await resetAllUsers();
-        await interaction.reply('🚨 **ALL** user message and voice stats have been reset!');
+        await interaction.reply('🌊 **SEASON RESET!** All grind stats have been wiped!');
     }
 });
 
