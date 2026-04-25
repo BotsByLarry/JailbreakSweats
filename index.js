@@ -165,9 +165,14 @@ client.on('interactionCreate', async (interaction) => {
         await updateUser(targetUser.id, userStats);
 
         const member = await interaction.guild.members.fetch(targetUser.id);
-        await checkRoles(member, userStats.messages, userStats.voiceMinutes || 0);
+        const rolesGiven = await checkRoles(member, userStats.messages, userStats.voiceMinutes || 0);
 
-        await interaction.reply(`🚀 Boosted ${targetUser.tag} by \`${amount}\` messages! New total: \`${userStats.messages}\``);
+        let response = `🚀 Boosted ${targetUser.tag} by \`${amount}\` messages! New total: \`${userStats.messages}\``;
+        if (rolesGiven.length > 0) {
+            response += `\n✨ **New Roles Assigned:** ${rolesGiven.join(', ')}`;
+        }
+
+        await interaction.reply(response);
     }
 
     if (commandName === 'slash-count') {
