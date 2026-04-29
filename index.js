@@ -2,7 +2,7 @@ const { Client, GatewayIntentBits, PermissionFlagsBits, EmbedBuilder } = require
 const express = require('express');
 const http = require('http');
 const dotenv = require('dotenv');
-const { getUser, updateUser, getTopUsers, resetAllUsers } = require('./database');
+const { getUser, updateUser, getTopUsers, resetAllUsers, incrementMessages } = require('./database');
 const { messageRoles, voiceRoles } = require('./roles');
 
 dotenv.config();
@@ -150,13 +150,22 @@ client.on('messageCreate', async (message) => {
 
     try {
         const userId = message.author.id;
-        const user = await getUser(userId);
         
-        user.messages = (user.messages || 0) + 1;
-        await updateUser(userId, user);
+        // Use atomic increment to prevent race conditions
+        const user = await incrementMessages(userId);
+        
+        if (!user) return;
 
-        // Check Roles
-        await checkRoles(message.member, user.messages, user.voiceMinutes || 0);
+        // Ensure member is fetched if not in cache (important for role assignment)
+        let member = message.member;
+        if (!member) {
+            member = await message.guild.members.fetch(userId).catch(() => null);
+        }
+
+        if (member) {
+            // Check Roles
+            await checkRoles(member, user.messages, user.voiceMinutes || 0);
+        }
     } catch (error) {
         console.error('Error tracking message:', error);
     }

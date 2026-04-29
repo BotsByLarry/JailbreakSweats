@@ -47,6 +47,26 @@ async function getUser(userId) {
 }
 
 /**
+ * Atomically increments message count for a user
+ * @param {string} userId 
+ */
+async function incrementMessages(userId) {
+    try {
+        const userRef = db.collection('users').doc(userId);
+        await userRef.set({
+            messages: admin.firestore.FieldValue.increment(1)
+        }, { merge: true });
+        
+        // Return the updated user for role checking
+        const updatedDoc = await userRef.get();
+        return updatedDoc.data();
+    } catch (error) {
+        console.error(`Error incrementing messages for ${userId}:`, error.message);
+        return null;
+    }
+}
+
+/**
  * Updates user stats in Firestore
  * @param {string} userId 
  * @param {object} data 
@@ -94,5 +114,6 @@ module.exports = {
     getUser,
     updateUser,
     getTopUsers,
-    resetAllUsers
+    resetAllUsers,
+    incrementMessages
 };
