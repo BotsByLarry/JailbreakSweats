@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, PermissionFlagsBits } = require('discord.js');
+const { Client, GatewayIntentBits, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const express = require('express');
 const http = require('http');
 const dotenv = require('dotenv');
@@ -249,13 +249,23 @@ client.on('interactionCreate', async (interaction) => {
                 return interaction.editReply('No grinders found in the database yet!');
             }
 
-            let lbMessage = '🏆 **Hall of Fame (Top 10)**\n\n';
+            const leaderboardEmbed = new EmbedBuilder()
+                .setTitle('🏆 **Jailbreak Sweats - Hall of Fame**')
+                .setColor('#FFD700') // Gold
+                .setDescription('The top 10 most active grinders in the server.')
+                .setTimestamp()
+                .setFooter({ text: 'Keep grinding to reach the top!' });
+
+            let lbMessage = '';
             for (let i = 0; i < topUsers.length; i++) {
                 const user = topUsers[i];
-                lbMessage += `${i + 1}. <@${user.id}> - \`${user.messages}\` messages\n`;
+                // Mentioning in embed description does not trigger a notification ping
+                lbMessage += `**${i + 1}.** <@${user.id}> — \`${user.messages}\` messages\n`;
             }
 
-            await interaction.editReply(lbMessage);
+            leaderboardEmbed.addFields({ name: 'Leaderboard', value: lbMessage || 'No data yet.' });
+
+            await interaction.editReply({ embeds: [leaderboardEmbed] });
         }
 
         // Admin Commands
