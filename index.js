@@ -1,5 +1,6 @@
 const { Client, GatewayIntentBits, PermissionFlagsBits } = require('discord.js');
 const express = require('express');
+const http = require('http');
 const dotenv = require('dotenv');
 const { getUser, updateUser, getTopUsers, resetAllUsers } = require('./database');
 const { messageRoles, voiceRoles } = require('./roles');
@@ -32,7 +33,35 @@ const client = new Client({
 client.once('ready', () => {
     console.log(`✅ Logged in as ${client.user.tag}`);
     console.log(`🤖 Bot is ready in ${client.guilds.cache.size} servers.`);
+    
+    // Start Heartbeat System
+    startHeartbeat();
 });
+
+// --- Heartbeat System (Self-Ping & Health Monitoring) ---
+function startHeartbeat() {
+    const PING_INTERVAL = 5 * 60 * 1000; // 5 minutes
+    
+    setInterval(async () => {
+        const uptime = process.uptime();
+        const days = Math.floor(uptime / 86400);
+        const hours = Math.floor((uptime % 86400) / 3600);
+        const minutes = Math.floor((uptime % 3600) / 60);
+        
+        const memoryUsage = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2);
+        const latency = client.ws.ping;
+
+        console.log(`[Heartbeat] 💓 Status: ONLINE | Latency: ${latency}ms | Memory: ${memoryUsage}MB | Uptime: ${days}d ${hours}h ${minutes}m`);
+
+        // Self-Ping to keep the server awake
+        const projectUrl = process.env.PROJECT_URL || `http://localhost:${port}`;
+        http.get(projectUrl, (res) => {
+            // console.log(`[Heartbeat] Self-ping successful: ${res.statusCode}`);
+        }).on('error', (err) => {
+            console.error(`[Heartbeat] Self-ping failed: ${err.message}`);
+        });
+    }, PING_INTERVAL);
+}
 
 // --- Global Error Handling ---
 process.on('unhandledRejection', error => {
