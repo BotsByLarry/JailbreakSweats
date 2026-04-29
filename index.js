@@ -232,12 +232,11 @@ client.on('interactionCreate', async (interaction) => {
         }, 2500);
 
         if (commandName === 'grind-status') {
-            await interaction.deferReply();
             const targetUser = options.getUser('user') || interaction.user;
             const userStats = await getUser(targetUser.id);
             const voiceHours = (userStats.voiceMinutes / 60 || 0).toFixed(1);
 
-            await interaction.editReply({
+            await interaction.reply({
                 content: `📊 **Sweat Stats for ${targetUser.tag}**\n- Messages: \`${userStats.messages || 0}\`\n- Voice Time: \`${voiceHours} hours\``
             });
         }
@@ -264,12 +263,16 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.deferReply();
             const targetUser = options.getUser('user');
             const amount = options.getInteger('amount');
-            const userStats = await getUser(targetUser.id);
+            
+            // Run DB fetch and Member fetch in parallel to save time
+            const [userStats, memberObj] = await Promise.all([
+                getUser(targetUser.id),
+                interaction.guild.members.fetch(targetUser.id)
+            ]);
 
             userStats.messages = (userStats.messages || 0) + amount;
             await updateUser(targetUser.id, userStats);
 
-            const memberObj = await interaction.guild.members.fetch(targetUser.id);
             const rolesGiven = await checkRoles(memberObj, userStats.messages, userStats.voiceMinutes || 0);
 
             let response = `🚀 Boosted ${targetUser.tag} by \`${amount}\` messages! New total: \`${userStats.messages}\``;
@@ -281,7 +284,6 @@ client.on('interactionCreate', async (interaction) => {
         }
 
         else if (commandName === 'slash-count') {
-            await interaction.deferReply();
             const targetUser = options.getUser('user');
             const amount = options.getInteger('amount');
             const userStats = await getUser(targetUser.id);
@@ -289,14 +291,13 @@ client.on('interactionCreate', async (interaction) => {
             userStats.messages = Math.max(0, (userStats.messages || 0) - amount);
             await updateUser(targetUser.id, userStats);
 
-            await interaction.editReply(`🔪 Slashed \`${amount}\` messages from ${targetUser.tag}. New total: \`${userStats.messages}\``);
+            await interaction.reply(`🔪 Slashed \`${amount}\` messages from ${targetUser.tag}. New total: \`${userStats.messages}\``);
         }
 
         else if (commandName === 'clear-history') {
-            await interaction.deferReply();
             const targetUser = options.getUser('user');
             await updateUser(targetUser.id, { messages: 0, voiceMinutes: 0 });
-            await interaction.editReply(`🧹 History cleared for ${targetUser.tag}.`);
+            await interaction.reply(`🧹 History cleared for ${targetUser.tag}.`);
         }
 
         else if (commandName === 'season-reset') {
