@@ -143,10 +143,8 @@ client.on('messageCreate', async (message) => {
     }
 
     // --- Message Tracking ---
-    if (allowedChannelId && message.channel.id !== allowedChannelId) {
-        // console.log(`Skipping tracking: channel ${message.channel.id} is not ${allowedChannelId}`);
-        return;
-    }
+    // Note: We track messages from ALL channels now to ensure no one is missed.
+    // Command restrictions are still handled in the interaction handler.
 
     try {
         const userId = message.author.id;
