@@ -5,14 +5,19 @@ dotenv.config();
 // Initialize Firebase
 try {
     const rawServiceAccount = process.env.FIREBASE_SERVICE_ACCOUNT;
+    if (!rawServiceAccount) {
+        throw new Error('FIREBASE_SERVICE_ACCOUNT is missing in .env');
+    }
     // Clean up the string if it was pasted with extra quotes or newlines
     const cleanedServiceAccount = rawServiceAccount.trim().replace(/^['"]|['"]$/g, '');
     const serviceAccount = JSON.parse(cleanedServiceAccount);
 
-    admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
-    });
-    console.log('Firebase initialized successfully.');
+    if (!admin.apps.length) {
+        admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount)
+        });
+        console.log('Firebase initialized successfully.');
+    }
 } catch (error) {
     console.error('Firebase initialization failed:', error.message);
 }
@@ -47,7 +52,11 @@ async function getUser(userId) {
  * @param {object} data 
  */
 async function updateUser(userId, data) {
-    await db.collection('users').doc(userId).set(data, { merge: true });
+    try {
+        await db.collection('users').doc(userId).set(data, { merge: true });
+    } catch (error) {
+        console.error(`Error updating user ${userId}:`, error.message);
+    }
 }
 
 /**
@@ -55,20 +64,30 @@ async function updateUser(userId, data) {
  * @param {number} limit 
  */
 async function getTopUsers(limit = 10) {
-    const snapshot = await db.collection('users').orderBy('messages', 'desc').limit(limit).get();
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    try {
+        const snapshot = await db.collection('users').orderBy('messages', 'desc').limit(limit).get();
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (error) {
+        console.error('Error getting top users:', error.message);
+        return [];
+    }
 }
 
 /**
  * Resets all users' message counts
  */
 async function resetAllUsers() {
-    const snapshot = await db.collection('users').get();
-    const batch = db.batch();
-    snapshot.docs.forEach(doc => {
-        batch.update(doc.ref, { messages: 0, voiceMinutes: 0 });
-    });
-    await batch.commit();
+    try {
+        const snapshot = await db.collection('users').get();
+        const batch = db.batch();
+        snapshot.docs.forEach(doc => {
+            batch.update(doc.ref, { messages: 0, voiceMinutes: 0 });
+        });
+        await batch.commit();
+        console.log('Successfully reset all users.');
+    } catch (error) {
+        console.error('Error resetting users:', error.message);
+    }
 }
 
 module.exports = {

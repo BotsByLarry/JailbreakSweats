@@ -1,7 +1,7 @@
 const { Client, GatewayIntentBits, PermissionFlagsBits } = require('discord.js');
 const express = require('express');
 const dotenv = require('dotenv');
-const { getUser, updateUser } = require('./database');
+const { getUser, updateUser, getTopUsers, resetAllUsers } = require('./database');
 const { messageRoles, voiceRoles } = require('./roles');
 
 dotenv.config();
@@ -30,7 +30,17 @@ const client = new Client({
 });
 
 client.once('ready', () => {
-    console.log(`Logged in as ${client.user.tag}`);
+    console.log(`✅ Logged in as ${client.user.tag}`);
+    console.log(`🤖 Bot is ready in ${client.guilds.cache.size} servers.`);
+});
+
+// --- Global Error Handling ---
+process.on('unhandledRejection', error => {
+    console.error('❌ Unhandled promise rejection:', error);
+});
+
+process.on('uncaughtException', error => {
+    console.error('❌ Uncaught exception:', error);
 });
 
 // Helper function to check and assign roles
@@ -125,6 +135,8 @@ client.on('messageCreate', async (message) => {
 
 // --- Voice Tracking ---
 client.on('voiceStateUpdate', async (oldState, newState) => {
+    return; // Voice tracking temporarily disabled
+    
     const userId = newState.id;
     if (newState.member.user.bot) return;
 
@@ -168,88 +180,119 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
+    const startTime = Date.now();
     const { commandName, options, channelId, member } = interaction;
 
-    // Channel restriction for commands (Admins bypass)
-    const allowedChannelId = process.env.ALLOWED_CHANNEL_ID;
-    const isAdmin = member.permissions.has(PermissionFlagsBits.Administrator);
+    console.log(`[Interaction] Received /${commandName} from ${interaction.user.tag}`);
 
-    if (allowedChannelId && channelId !== allowedChannelId && !isAdmin) {
-        return interaction.reply({
-            content: `❌ This bot can only be used in <#${allowedChannelId}>!`,
-            ephemeral: true
-        });
-    }
+    try {
+        // Channel restriction for commands (Admins bypass)
+        const allowedChannelId = process.env.ALLOWED_CHANNEL_ID;
+        const isAdmin = member.permissions.has(PermissionFlagsBits.Administrator);
 
-    if (commandName === 'grind-status') {
-        const targetUser = options.getUser('user') || interaction.user;
-        const userStats = await getUser(targetUser.id);
-        const voiceHours = (userStats.voiceMinutes / 60 || 0).toFixed(1);
+        if (allowedChannelId && channelId !== allowedChannelId && !isAdmin) {
+            return interaction.reply({
+                content: `❌ This bot can only be used in <#${allowedChannelId}>!`,
+                flags: 64 // MessageFlags.Ephemeral
+            });
+        }
 
-        await interaction.reply({
-            content: `📊 **Sweat Stats for ${targetUser.tag}**\n- Messages: \`${userStats.messages || 0}\`\n- Voice Time: \`${voiceHours} hours\``,
-            ephemeral: false
-        });
-    }
+        // Add a small delay check to warn if we're hitting the 3s limit
+        const timeoutWarn = setTimeout(() => {
+            console.warn(`⚠️ Warning: /${commandName} is taking more than 2.5s to respond!`);
+        }, 2500);
 
-    if (commandName === 'top-grinders') {
-        const { getTopUsers } = require('./database');
-        const topUsers = await getTopUsers(10);
+        if (commandName === 'grind-status') {
+            await interaction.deferReply();
+            const targetUser = options.getUser('user') || interaction.user;
+            const userStats = await getUser(targetUser.id);
+            const voiceHours = (userStats.voiceMinutes / 60 || 0).toFixed(1);
+
+            await interaction.editReply({
+                content: `📊 **Sweat Stats for ${targetUser.tag}**\n- Messages: \`${userStats.messages || 0}\`\n- Voice Time: \`${voiceHours} hours\``
+            });
+        }
+
+        else if (commandName === 'top-grinders') {
+            await interaction.deferReply();
+            const topUsers = await getTopUsers(10);
+            
+            if (topUsers.length === 0) {
+                return interaction.editReply('No grinders found in the database yet!');
+            }
+
+            let lbMessage = '🏆 **Hall of Fame (Top 10)**\n\n';
+            for (let i = 0; i < topUsers.length; i++) {
+                const user = topUsers[i];
+                lbMessage += `${i + 1}. <@${user.id}> - \`${user.messages}\` messages\n`;
+            }
+
+            await interaction.editReply(lbMessage);
+        }
+
+        // Admin Commands
+        else if (commandName === 'boost-count') {
+            await interaction.deferReply();
+            const targetUser = options.getUser('user');
+            const amount = options.getInteger('amount');
+            const userStats = await getUser(targetUser.id);
+
+            userStats.messages = (userStats.messages || 0) + amount;
+            await updateUser(targetUser.id, userStats);
+
+            const memberObj = await interaction.guild.members.fetch(targetUser.id);
+            const rolesGiven = await checkRoles(memberObj, userStats.messages, userStats.voiceMinutes || 0);
+
+            let response = `🚀 Boosted ${targetUser.tag} by \`${amount}\` messages! New total: \`${userStats.messages}\``;
+            if (rolesGiven.length > 0) {
+                response += `\n✨ **New Roles Assigned:** ${rolesGiven.join(', ')}`;
+            }
+
+            await interaction.editReply(response);
+        }
+
+        else if (commandName === 'slash-count') {
+            await interaction.deferReply();
+            const targetUser = options.getUser('user');
+            const amount = options.getInteger('amount');
+            const userStats = await getUser(targetUser.id);
+
+            userStats.messages = Math.max(0, (userStats.messages || 0) - amount);
+            await updateUser(targetUser.id, userStats);
+
+            await interaction.editReply(`🔪 Slashed \`${amount}\` messages from ${targetUser.tag}. New total: \`${userStats.messages}\``);
+        }
+
+        else if (commandName === 'clear-history') {
+            await interaction.deferReply();
+            const targetUser = options.getUser('user');
+            await updateUser(targetUser.id, { messages: 0, voiceMinutes: 0 });
+            await interaction.editReply(`🧹 History cleared for ${targetUser.tag}.`);
+        }
+
+        else if (commandName === 'season-reset') {
+            await interaction.deferReply();
+            await resetAllUsers();
+            await interaction.editReply('🌊 **SEASON RESET!** All grind stats have been wiped!');
+        }
+
+        clearTimeout(timeoutWarn);
+        const duration = Date.now() - startTime;
+        console.log(`[Interaction] Finished /${commandName} in ${duration}ms`);
+
+    } catch (error) {
+        console.error(`❌ Error handling /${commandName}:`, error);
         
-        if (topUsers.length === 0) {
-            return interaction.reply('No grinders found in the database yet!');
+        // Try to let the user know something went wrong
+        try {
+            if (interaction.deferred || interaction.replied) {
+                await interaction.editReply({ content: '❌ An error occurred while executing this command. Check the logs.' });
+            } else {
+                await interaction.reply({ content: '❌ An error occurred while executing this command. Check the logs.', ephemeral: true });
+            }
+        } catch (innerError) {
+            console.error('Failed to send error message to Discord:', innerError.message);
         }
-
-        let lbMessage = '🏆 **Hall of Fame (Top 10)**\n\n';
-        for (let i = 0; i < topUsers.length; i++) {
-            const user = topUsers[i];
-            lbMessage += `${i + 1}. <@${user.id}> - \`${user.messages}\` messages\n`;
-        }
-
-        await interaction.reply(lbMessage);
-    }
-
-    // Admin Commands
-    if (commandName === 'boost-count') {
-        const targetUser = options.getUser('user');
-        const amount = options.getInteger('amount');
-        const userStats = await getUser(targetUser.id);
-
-        userStats.messages = (userStats.messages || 0) + amount;
-        await updateUser(targetUser.id, userStats);
-
-        const member = await interaction.guild.members.fetch(targetUser.id);
-        const rolesGiven = await checkRoles(member, userStats.messages, userStats.voiceMinutes || 0);
-
-        let response = `🚀 Boosted ${targetUser.tag} by \`${amount}\` messages! New total: \`${userStats.messages}\``;
-        if (rolesGiven.length > 0) {
-            response += `\n✨ **New Roles Assigned:** ${rolesGiven.join(', ')}`;
-        }
-
-        await interaction.reply(response);
-    }
-
-    if (commandName === 'slash-count') {
-        const targetUser = options.getUser('user');
-        const amount = options.getInteger('amount');
-        const userStats = await getUser(targetUser.id);
-
-        userStats.messages = Math.max(0, (userStats.messages || 0) - amount);
-        await updateUser(targetUser.id, userStats);
-
-        await interaction.reply(`🔪 Slashed \`${amount}\` messages from ${targetUser.tag}. New total: \`${userStats.messages}\``);
-    }
-
-    if (commandName === 'clear-history') {
-        const targetUser = options.getUser('user');
-        await updateUser(targetUser.id, { messages: 0, voiceMinutes: 0 });
-        await interaction.reply(`🧹 History cleared for ${targetUser.tag}.`);
-    }
-
-    if (commandName === 'season-reset') {
-        const { resetAllUsers } = require('./database');
-        await resetAllUsers();
-        await interaction.reply('🌊 **SEASON RESET!** All grind stats have been wiped!');
     }
 });
 
